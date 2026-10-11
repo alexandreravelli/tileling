@@ -7,6 +7,7 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Every setting of Tileling. [`Config::default`] gives the values of the default file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     /// Pixels kept between tiled windows and around them.
