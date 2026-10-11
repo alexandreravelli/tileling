@@ -38,7 +38,26 @@
 
 ## 📦 Install
 
-### Debian 13 package (recommended)
+### Debian 13, with APT (recommended)
+
+Tileling comes from the APT repository of [Agent Center](https://github.com/alexandreravelli/agent-center),
+so `apt upgrade` installs its new versions. With Agent Center installed, the repository is already there:
+
+```sh
+sudo apt update && sudo apt install tileling
+```
+
+Without Agent Center, add the repository and its signing key first:
+
+```sh
+sudo wget -qO /usr/share/keyrings/agent-center-archive-keyring.gpg \
+  https://github.com/alexandreravelli/agent-center/releases/latest/download/agent-center-archive-keyring.gpg
+printf 'Types: deb\nURIs: https://github.com/alexandreravelli/agent-center/releases/latest\nSuites: download/\nSigned-By: /usr/share/keyrings/agent-center-archive-keyring.gpg\n' \
+  | sudo tee /etc/apt/sources.list.d/agent-center.sources
+sudo apt update && sudo apt install tileling
+```
+
+### Debian 13 package
 
 Grab the `.deb` from the [latest release](https://github.com/alexandreravelli/tileling/releases/latest):
 
