@@ -1,8 +1,8 @@
 //! Tileling: Ubuntu 26.10-style window tiling for XFCE and other X11 desktops.
 
 mod app;
-mod config;
-mod layout;
+
+use tileling::config;
 
 const USAGE: &str = "\
 Usage: tileling [--check-config | --version | --help]
