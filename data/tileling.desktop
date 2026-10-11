@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tileling
+Comment=Window tiling with a layout picker
+Exec=tileling
+Terminal=false
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

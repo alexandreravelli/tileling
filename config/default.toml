@@ -1,0 +1,21 @@
+# Tileling configuration
+#
+# Location: ~/.config/tileling/config.toml, else /etc/xdg/tileling/config.toml (system-wide),
+# else these built-in defaults. Restart Tileling after editing: pkill tileling; tileling &
+
+# Pixels kept between tiled windows and around them (0 = windows touch each other).
+gap = 8
+
+# While you drag a window, the layout picker opens when the pointer comes within this many
+# pixels of the top of the work area.
+trigger = 40
+
+# After a window is tiled, offer the other open windows for the zones that are left.
+assist = true
+
+# Layouts shown in the picker, in this order. Available: "halves", "half-quarters",
+# "quarters-half", "quarters", "two-thirds", "one-third", "rows".
+layouts = ["halves", "half-quarters", "quarters-half", "quarters", "two-thirds", "one-third"]
+
+# Colour of the hovered zone and of the preview, "#RRGGBB".
+accent = "#3584e4"

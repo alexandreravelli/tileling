@@ -1,0 +1,41 @@
+[package]
+name = "tileling"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "Ultra-lightweight window tiling for XFCE on Debian: layout picker, preview and tiling assistant"
+license = "MIT"
+readme = "README.md"
+keywords = ["tiling", "x11", "xfce", "window-manager", "debian"]
+categories = ["gui"]
+
+[dependencies]
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
+x11rb = { version = "0.14", features = ["image", "randr", "shape", "xinput"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[package.metadata.deb]
+maintainer = "alexandreravelli"
+section = "x11"
+priority = "optional"
+depends = "$auto"
+extended-description = """\
+Tileling brings Ubuntu 26.10's window tiling to XFCE and other X11 desktops: drag a window \
+towards the top of the screen to open a layout picker, drop it on a zone (halves, quarters, \
+thirds), see a preview before you release, then pick the windows that fill the other zones."""
+assets = [
+    ["target/release/tileling", "usr/bin/", "755"],
+    ["data/tileling.desktop", "etc/xdg/autostart/", "644"],
+    ["config/default.toml", "usr/share/doc/tileling/config.example.toml", "644"],
+    ["README.md", "usr/share/doc/tileling/", "644"],
+]
+
+[dev-dependencies]
+x11rb = { version = "0.14", features = ["xtest"] }
