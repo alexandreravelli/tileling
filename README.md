@@ -10,6 +10,8 @@
 
 [![CI](https://github.com/alexandreravelli/tileling/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandreravelli/tileling/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alexandreravelli/tileling?color=3584e4)](https://github.com/alexandreravelli/tileling/releases/latest)
+[![crates.io](https://img.shields.io/crates/v/tileling?logo=rust)](https://crates.io/crates/tileling)
+[![docs.rs](https://img.shields.io/docsrs/tileling?logo=docs.rs)](https://docs.rs/tileling)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust 1.92+](https://img.shields.io/badge/rust-1.92%2B-orange?logo=rust)](https://www.rust-lang.org)
 [![Debian 13 · XFCE](https://img.shields.io/badge/Debian%2013-XFCE-a80030?logo=debian)](https://www.debian.org)
@@ -42,8 +44,8 @@ Grab the `.deb` from the [latest release](https://github.com/alexandreravelli/ti
 
 ```sh
 cd /tmp
-wget https://github.com/alexandreravelli/tileling/releases/download/v0.1.0/tileling_0.1.0-1_amd64.deb
-sudo apt install ./tileling_0.1.0-1_amd64.deb
+wget https://github.com/alexandreravelli/tileling/releases/latest/download/tileling_amd64.deb
+sudo apt install ./tileling_amd64.deb
 ```
 
 Log out and back in: Tileling starts with the XFCE session (`/etc/xdg/autostart/tileling.desktop`).
@@ -51,10 +53,11 @@ To try it right away, run `tileling &`.
 
 ### Any distribution
 
-The release also has a static binary that runs on any x86-64 Linux with X11:
+The release also has a static binary that runs on any x86-64 Linux with X11
+(`tileling-vX.Y.Z-x86_64-linux.tar.gz`):
 
 ```sh
-tar xzf tileling-v0.1.0-x86_64-linux.tar.gz
+tar xzf tileling-v*-x86_64-linux.tar.gz
 sudo install -m 755 tileling /usr/local/bin/
 sudo install -m 644 data/tileling.desktop /etc/xdg/autostart/
 ```
@@ -75,6 +78,15 @@ sudo install -m 755 target/x86_64-unknown-linux-musl/release/tileling /usr/local
 sudo install -m 644 data/tileling.desktop /etc/xdg/autostart/
 ```
 
+### From crates.io
+
+```sh
+cargo install tileling
+```
+
+`cargo install` puts `tileling` in `~/.cargo/bin`; add it to your session's autostart
+(*Settings > Session and Startup > Application Autostart*).
+
 ## 🖱️ Usage
 
 1. **Drag a window by its title bar towards the top of the screen.** The layout picker appears at the top centre.
@@ -85,11 +97,19 @@ sudo install -m 644 data/tileling.desktop /etc/xdg/autostart/
 Dragging away from the picker, or pressing Escape during the drag, leaves the window where it is.
 xfwm4's own edge snapping (drag to a side or a corner) keeps working.
 
+```text
+tileling                         start (once per screen)
+tileling --reload                make the running Tileling read its configuration again
+tileling --quit                  stop it
+tileling --replace               start, replacing the running one
+tileling --check-config [FILE]   list the problems of the configuration file, then the settings in use
+```
+
 ## ⚙️ Settings
 
 Tileling reads `~/.config/tileling/config.toml`, else `/etc/xdg/tileling/config.toml` for every user,
 else its built-in defaults. A commented example is in [config/default.toml](config/default.toml).
-Restart Tileling after a change: `pkill -x tileling; tileling &`.
+Apply a change with `tileling --reload`.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -100,7 +120,13 @@ Restart Tileling after a change: `pkill -x tileling; tileling &`.
 | `accent` | `"#3584e4"` | Colour of the hovered zone and of the preview |
 
 A typo or a wrong value is reported and skipped on its own: the rest of the file still applies.
-`tileling --check-config` shows the file in use and the settings it gives.
+`tileling --check-config` lists the problems with their line, then the settings in use:
+
+```text
+$ tileling --check-config
+/home/me/.config/tileling/config.toml:3: unknown setting "triger". Did you mean "trigger"?
+1 problem: Tileling skips this setting and uses the others.
+```
 
 To turn Tileling off, untick it in *Settings > Session and Startup > Application Autostart*.
 
@@ -123,13 +149,19 @@ translucent with rounded corners; without one they are solid. Wayland is not sup
 ## 🧪 Development
 
 ```sh
-cargo test                         # geometry, picker, configuration, icons
+cargo test                         # geometry, picker, configuration, icons; Tileling on Xvfb when installed
 cargo clippy --all-targets -- -D warnings
 TILELING_DEBUG=1 cargo run         # logs every tiling
 ```
 
 `examples/xtest.rs` drives the real pointer through XTest (move, press, drag, release) to test
-the whole flow on a live session.
+the whole flow on a live session. The layouts and the configuration are a documented library:
+[docs.rs/tileling](https://docs.rs/tileling).
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the checks and the commit format, and
+[SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## 📄 License
 
