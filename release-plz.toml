@@ -1,0 +1,27 @@
+# release-plz keeps a release pull request open on GitHub (https://release-plz.dev): it bumps
+# the version from the Conventional Commits merged since the last release and writes the
+# CHANGELOG.md section. Merging it publishes the release: the Release workflow builds the
+# package, the static binary, the GitHub release and (when enabled) the crates.io version.
+
+[workspace]
+# The last version comes from the v* git tags, which the Release workflow creates; the
+# Release workflow also publishes to crates.io.
+git_only = true
+git_tag_enable = false
+git_release_enable = false
+# Breaking changes are marked in commit messages (feat!: ...).
+semver_check = false
+# Before 1.0, a new feature bumps the minor version (0.3.0 -> 0.4.0), as a breaking change does.
+features_always_increment_minor = true
+pr_labels = ["release"]
+
+[changelog]
+# What users notice, in Keep a Changelog groups; CI, tests and chores stay out.
+commit_parsers = [
+    { message = "^feat", group = "Added" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^(perf|refactor)", group = "Changed" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^(build|chore|ci|style|test)", skip = true },
+    { message = ".*", group = "Other" },
+]
