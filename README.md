@@ -1,59 +1,136 @@
+<div align="center">
+
+<img src="docs/logo.svg" alt="Tileling logo" width="112">
+
 # Tileling
 
-Ubuntu 26.10's window tiling for XFCE and other X11 desktops, in one ~1 MB static binary.
+**Ubuntu-style window tiling for XFCE on Debian, written in Rust.**
 
-- **Layout picker**: drag a window towards the top of the screen and a row of layouts slides
-  in: halves, half and quarters, quarters, two thirds and one third.
-- **Preview**: hover a zone and a translucent preview shows where the window will go.
-- **Tiling assistant**: drop the window and Tileling offers your other windows, by icon, for
-  the zones that are left. Click one to tile it there; Escape or a click elsewhere closes it.
-- **Gaps** between windows, an accent colour, and the layouts you want, in one TOML file.
+~1 MB static binary · ~1 MB of RAM and 0% CPU when idle · no GTK, Qt or window manager plugin
 
-xfwm4 already tiles halves and quarters when you drag a window to a screen edge; Tileling adds
-the picker, the preview and the assistant on top of it.
+[![CI](https://github.com/alexandreravelli/tileling/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandreravelli/tileling/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/alexandreravelli/tileling?color=3584e4)](https://github.com/alexandreravelli/tileling/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Rust 1.92+](https://img.shields.io/badge/rust-1.92%2B-orange?logo=rust)](https://www.rust-lang.org)
+[![Debian 13 · XFCE](https://img.shields.io/badge/Debian%2013-XFCE-a80030?logo=debian)](https://www.debian.org)
 
-## How it works
+[Install](#-install) · [Usage](#%EF%B8%8F-usage) · [Settings](#%EF%B8%8F-settings) · [Changelog](CHANGELOG.md)
 
-Tileling sleeps until a mouse button goes down. It follows a drag with XInput 2 raw events
-(they keep arriving while the window manager holds the pointer), so it needs no window manager
-plugin. It tiles with the standard `_NET_MOVERESIZE_WINDOW` request, which takes the window
-frame and panels into account. About 1 MB of memory, no CPU while idle, one thread, no GTK.
+<img src="docs/screenshot.png" alt="Dragging a window to the top of the screen opens the layout picker; a blue preview shows where the window will go" width="720">
 
-It needs an X11 session with XInput 2.1 or newer. With a compositor (xfwm4's is on by default)
-the picker and the preview are translucent with rounded corners; without one they are solid.
+</div>
 
-## Install
+---
 
-Build a static binary that runs on any distribution (Debian 13 included):
+## ✨ Features
+
+|  |  |
+| --- | --- |
+| 🧩 **Layout picker** | Drag a window towards the top of the screen: a row of layouts slides in. Halves, half and quarters, quarters, two thirds and one third. |
+| 👻 **Live preview** | Hover a zone and a translucent preview shows exactly where the window will go before you let go. |
+| 🪄 **Tiling assistant** | Once the window is tiled, your other windows are offered for the zones that are left. One click tiles each of them. |
+| 📐 **Respects your desktop** | Tiles between your panels and your dock, on the monitor under the pointer, with even gaps. Maximized windows can be dragged too. |
+| 🪶 **Featherweight** | A single static binary that sleeps until a mouse button goes down. Perfect for VMs, thin clients and remote desktops. |
+| 🧱 **No plugin needed** | Works alongside xfwm4 as it is, through standard X11 protocols. xfwm4 keeps its own edge snapping. |
+| 📝 **One small config file** | Gaps, the layouts you want, the accent colour and the assistant, in a commented TOML file. |
+
+## 📦 Install
+
+### Debian 13 package (recommended)
+
+Grab the `.deb` from the [latest release](https://github.com/alexandreravelli/tileling/releases/latest):
 
 ```sh
+cd /tmp
+wget https://github.com/alexandreravelli/tileling/releases/download/v0.1.0/tileling_0.1.0-1_amd64.deb
+sudo apt install ./tileling_0.1.0-1_amd64.deb
+```
+
+Log out and back in: Tileling starts with the XFCE session (`/etc/xdg/autostart/tileling.desktop`).
+To try it right away, run `tileling &`.
+
+### Any distribution
+
+The release also has a static binary that runs on any x86-64 Linux with X11:
+
+```sh
+tar xzf tileling-v0.1.0-x86_64-linux.tar.gz
+sudo install -m 755 tileling /usr/local/bin/
+sudo install -m 644 data/tileling.desktop /etc/xdg/autostart/
+```
+
+### From source
+
+Tileling needs Rust 1.92 or newer (Debian 13 ships 1.85), so install the current toolchain with rustup:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+. "$HOME/.cargo/env"
 rustup target add x86_64-unknown-linux-musl
+
+git clone https://github.com/alexandreravelli/tileling.git
+cd tileling
 cargo build --release --target x86_64-unknown-linux-musl
 sudo install -m 755 target/x86_64-unknown-linux-musl/release/tileling /usr/local/bin/
 sudo install -m 644 data/tileling.desktop /etc/xdg/autostart/
 ```
 
-Log out and back in, or run `tileling &`. A Debian package: `cargo deb` (needs `cargo-deb`).
+## 🖱️ Usage
 
-## Configuration
+1. **Drag a window by its title bar towards the top of the screen.** The layout picker appears at the top centre.
+2. **Move over a zone** of one of the layouts. The preview shows where the window will go.
+3. **Release the mouse button.** The window takes that zone.
+4. **Pick the windows for the other zones** in the assistant, or press Escape or click elsewhere to close it.
 
-`~/.config/tileling/config.toml`, else `/etc/xdg/tileling/config.toml` for every user; see
-[config/default.toml](config/default.toml). Unknown keys and bad values are reported and skipped
-one by one, so a typo never resets the rest of the file. `tileling --check-config` shows the
-configuration in use.
+Dragging away from the picker, or pressing Escape during the drag, leaves the window where it is.
+xfwm4's own edge snapping (drag to a side or a corner) keeps working.
 
-```toml
-gap = 8           # pixels between windows and around them
-trigger = 40      # distance from the top that opens the picker
-assist = true     # offer the other windows after tiling
-layouts = ["halves", "half-quarters", "quarters-half", "quarters", "two-thirds", "one-third"]
-accent = "#3584e4"
-```
+## ⚙️ Settings
+
+Tileling reads `~/.config/tileling/config.toml`, else `/etc/xdg/tileling/config.toml` for every user,
+else its built-in defaults. A commented example is in [config/default.toml](config/default.toml).
+Restart Tileling after a change: `pkill -x tileling; tileling &`.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `gap` | `8` | Pixels between tiled windows and around them |
+| `trigger` | `40` | Distance from the top of the work area that opens the picker while you drag |
+| `assist` | `true` | Offer the other windows for the zones that are left |
+| `layouts` | 6 layouts | Picker layouts, in order: `halves`, `half-quarters`, `quarters-half`, `quarters`, `two-thirds`, `one-third`, `rows` |
+| `accent` | `"#3584e4"` | Colour of the hovered zone and of the preview |
+
+A typo or a wrong value is reported and skipped on its own: the rest of the file still applies.
+`tileling --check-config` shows the file in use and the settings it gives.
 
 To turn Tileling off, untick it in *Settings > Session and Startup > Application Autostart*.
 
-## Development
+## 🔧 How it works
 
-`cargo test` covers the zone geometry, the picker, the configuration and icon decoding.
+Tileling waits for a mouse button. While a window is dragged, it follows the pointer through
+XInput 2 raw events, which keep arriving while the window manager holds the pointer. The picker,
+the preview and the assistant are small override-redirect windows drawn with tiny-skia. Windows
+are tiled with the standard `_NET_MOVERESIZE_WINDOW` request, so the window manager accounts for
+frames and size hints.
+
+Known limits: applications that draw their own title bar and shadow (client-side decorations)
+keep a slightly larger gap, because their shadow counts as part of the window; with xfwm4's
+"wireframe" move mode (off by default) the picker cannot follow the window.
+
+Requirements: an X11 session with XInput 2.1 or newer and an EWMH window manager. It is built and
+tested with xfwm4 on Debian 13. With a compositor (xfwm4's is on by default) the overlays are
+translucent with rounded corners; without one they are solid. Wayland is not supported.
+
+## 🧪 Development
+
+```sh
+cargo test                         # geometry, picker, configuration, icons
+cargo clippy --all-targets -- -D warnings
+TILELING_DEBUG=1 cargo run         # logs every tiling
+```
+
 `examples/xtest.rs` drives the real pointer through XTest (move, press, drag, release) to test
-the whole flow on a live session: `TILELING_DEBUG=1 tileling` logs each tiling.
+the whole flow on a live session.
+
+## 📄 License
+
+[MIT](LICENSE)

@@ -1,0 +1,87 @@
+name: Release
+
+# Publishes a release whenever main carries a version (Cargo.toml) that has no release yet:
+# bump `version`, add a CHANGELOG.md section, push to main. The checks run first, and nothing
+# is published if one fails.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.version.outputs.released }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f 2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: check
+    if: needs.check.outputs.released == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  release:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    # A static (musl) binary, built and packaged on Debian 13.
+    container: debian:trixie
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      TARGET: x86_64-unknown-linux-musl
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          # dpkg-dev provides dpkg-shlibdeps, which cargo-deb runs.
+          apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev git dpkg-dev
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: Build the binary and the Debian package
+        run: |
+          cargo build --release --locked --target "$TARGET"
+          cargo install cargo-deb --locked --version 3.8.0
+          cargo deb --no-build --target "$TARGET"
+      - name: Prepare release files
+        run: |
+          mkdir dist
+          cp target/"$TARGET"/debian/*.deb dist/
+          tar czf "dist/tileling-v${VERSION}-x86_64-linux.tar.gz" \
+            -C target/"$TARGET"/release tileling \
+            -C "$GITHUB_WORKSPACE" README.md LICENSE CHANGELOG.md config/default.toml data/tileling.desktop
+          (cd dist && sha256sum * > SHA256SUMS)
+          # Release notes: this version's section of the changelog.
+          awk -v v="$VERSION" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $VERSION"; exit 1; }
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: Tileling v${{ env.VERSION }}
+          body_path: notes.md
+          files: dist/*

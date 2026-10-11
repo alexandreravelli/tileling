@@ -3,7 +3,7 @@
 //! are reported and ignored one by one: one typo never resets the whole file.
 
 use crate::layout;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -34,15 +34,20 @@ impl Default for Config {
 }
 
 pub fn path() -> Option<PathBuf> {
-    let home = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-    let user = home.join("tileling/config.toml");
-    if user.exists() {
-        return Some(user);
-    }
-    let dirs = std::env::var("XDG_CONFIG_DIRS").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "/etc/xdg".into());
-    dirs.split(':').map(|d| PathBuf::from(d).join("tileling/config.toml")).find(|p| p.exists())
+    path_in(&|k| std::env::var(k).ok(), &|p| p.exists())
+}
+
+/// The XDG Base Directory lookup, with the environment and the file system passed in.
+/// Relative directories are ignored, as the specification asks.
+fn path_in(env: &dyn Fn(&str) -> Option<String>, exists: &dyn Fn(&Path) -> bool) -> Option<PathBuf> {
+    let absolute = |v: String| Some(PathBuf::from(v)).filter(|p| p.is_absolute());
+    let home =
+        env("XDG_CONFIG_HOME").and_then(absolute).or_else(|| env("HOME").and_then(absolute).map(|h| h.join(".config")));
+    let system = env("XDG_CONFIG_DIRS").filter(|v| !v.is_empty()).unwrap_or_else(|| "/etc/xdg".into());
+    home.into_iter()
+        .chain(system.split(':').filter_map(|d| absolute(d.to_string())))
+        .map(|d| d.join("tileling/config.toml"))
+        .find(|p| exists(p))
 }
 
 pub fn load() -> Config {
@@ -71,7 +76,7 @@ pub fn parse(text: &str, warn: &mut dyn FnMut(String)) -> Config {
             "trigger" => value
                 .as_integer()
                 .and_then(|v| u32::try_from(v).ok())
-                .filter(|&v| (4..=400).contains(&v))
+                .filter(|&v| (4..=200).contains(&v))
                 .map(|v| cfg.trigger = v),
             "assist" => value.as_bool().map(|v| cfg.assist = v),
             "accent" => value.as_str().and_then(color).map(|v| cfg.accent = v),
@@ -86,7 +91,9 @@ pub fn parse(text: &str, warn: &mut dyn FnMut(String)) -> Config {
                         }
                     })
                     .collect();
-                if !names.is_empty() {
+                if names.is_empty() {
+                    warn("no usable layout in \"layouts\"; keeping the default ones".into());
+                } else {
                     cfg.layouts = names;
                 }
             }),
@@ -142,6 +149,46 @@ mod tests {
     fn non_ascii_colour_is_rejected_without_panicking() {
         assert_eq!(color("#e95\u{a0}0"), None);
         assert_eq!(color("#3584e4"), Some([0x35, 0x84, 0xe4]));
+    }
+
+    #[test]
+    fn empty_layouts_keep_the_defaults() {
+        let (cfg, warnings) = quiet("layouts = []\n");
+        assert_eq!(cfg.layouts, Config::default().layouts);
+        assert_eq!(warnings.len(), 1);
+    }
+
+    #[test]
+    fn config_lookup_follows_xdg() {
+        let env = |vars: &'static [(&'static str, &'static str)]| {
+            move |k: &str| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
+        };
+        let only = |file: &'static str| move |p: &Path| p == Path::new(file);
+        let home = env(&[("HOME", "/home/u")]);
+        assert_eq!(
+            path_in(&home, &only("/home/u/.config/tileling/config.toml")),
+            Some("/home/u/.config/tileling/config.toml".into())
+        );
+        assert_eq!(
+            path_in(&home, &only("/etc/xdg/tileling/config.toml")),
+            Some("/etc/xdg/tileling/config.toml".into())
+        );
+        // No HOME at all: the system directories are still searched.
+        assert_eq!(
+            path_in(&env(&[]), &only("/etc/xdg/tileling/config.toml")),
+            Some("/etc/xdg/tileling/config.toml".into())
+        );
+        // A relative XDG_CONFIG_HOME is ignored, HOME is used instead.
+        let relative = env(&[("XDG_CONFIG_HOME", "conf"), ("HOME", "/home/u")]);
+        assert_eq!(
+            path_in(&relative, &only("/home/u/.config/tileling/config.toml")),
+            Some("/home/u/.config/tileling/config.toml".into())
+        );
+        let dirs = env(&[("XDG_CONFIG_DIRS", "/etc/xdg/cloudagent:/etc/xdg")]);
+        assert_eq!(
+            path_in(&dirs, &|p: &Path| p.starts_with("/etc/xdg")),
+            Some("/etc/xdg/cloudagent/tileling/config.toml".into())
+        );
     }
 
     #[test]

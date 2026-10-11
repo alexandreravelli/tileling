@@ -1,9 +1,11 @@
 //! Test driver (not shipped): fakes real pointer input with XTest, like a hand on the mouse.
-//!   xtest move X Y | down | up | click X Y | path X1 Y1 X2 Y2 STEPS DELAY_MS
+//!   xtest move X Y | down | up | click X Y | key KEYCODE... | path X1 Y1 X2 Y2 STEPS DELAY_MS
 
 use std::{thread::sleep, time::Duration};
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, MOTION_NOTIFY_EVENT};
+use x11rb::protocol::xproto::{
+    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, KEY_PRESS_EVENT, KEY_RELEASE_EVENT, MOTION_NOTIFY_EVENT,
+};
 use x11rb::protocol::xtest::ConnectionExt as _;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,6 +28,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sleep(Duration::from_millis(60));
             button(BUTTON_RELEASE_EVENT)?;
         }
+        Some("key") => {
+            // Several keycodes make a shortcut: pressed in order, released in reverse.
+            let codes: Vec<u8> = args[1..].iter().filter_map(|c| c.parse().ok()).collect();
+            for &c in &codes {
+                conn.xtest_fake_input(KEY_PRESS_EVENT, c, 0, root, 0, 0, 0)?.check()?;
+            }
+            for &c in codes.iter().rev() {
+                conn.xtest_fake_input(KEY_RELEASE_EVENT, c, 0, root, 0, 0, 0)?.check()?;
+            }
+        }
         Some("path") => {
             let (x1, y1, x2, y2, steps, delay) = (n(1), n(2), n(3), n(4), n(5).max(1), n(6) as u64);
             for i in 1..=steps {
@@ -34,7 +46,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 sleep(Duration::from_millis(delay));
             }
         }
-        _ => return Err("usage: xtest move X Y | down | up | click X Y | path X1 Y1 X2 Y2 STEPS DELAY_MS".into()),
+        _ => {
+            return Err(
+                "usage: xtest move X Y | down | up | click X Y | key KEYCODE... | path X1 Y1 X2 Y2 STEPS DELAY_MS"
+                    .into(),
+            );
+        }
     }
     conn.flush()?;
     Ok(())

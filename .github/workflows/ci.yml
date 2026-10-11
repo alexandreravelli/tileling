@@ -14,8 +14,16 @@ jobs:
           components: clippy, rustfmt
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
-      - run: cargo build --release
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
+  # The oldest Rust that Cargo.toml promises (rust-version).
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.92
+      - run: cargo build --locked
 
   # Same build as the README's "Install" steps, on the target system.
   debian:
@@ -29,5 +37,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
-      - run: cargo build --release --target x86_64-unknown-linux-musl
+      - run: cargo test --locked --target x86_64-unknown-linux-musl
+      - run: cargo build --release --locked --target x86_64-unknown-linux-musl
       - run: ./target/x86_64-unknown-linux-musl/release/tileling --version

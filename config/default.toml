@@ -7,7 +7,7 @@
 gap = 8
 
 # While you drag a window, the layout picker opens when the pointer comes within this many
-# pixels of the top of the work area.
+# pixels of the top of the work area (4 to 200).
 trigger = 40
 
 # After a window is tiled, offer the other open windows for the zones that are left.
