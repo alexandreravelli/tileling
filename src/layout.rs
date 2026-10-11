@@ -10,18 +10,22 @@ pub struct Rect {
 }
 
 impl Rect {
+    #[must_use]
     pub fn right(&self) -> i32 {
         self.x + self.w as i32
     }
 
+    #[must_use]
     pub fn bottom(&self) -> i32 {
         self.y + self.h as i32
     }
 
+    #[must_use]
     pub fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x && y >= self.y && x < self.right() && y < self.bottom()
     }
 
+    #[must_use]
     pub fn intersect(&self, o: &Rect) -> Option<Rect> {
         let (x0, y0) = (self.x.max(o.x), self.y.max(o.y));
         let (x1, y1) = (self.right().min(o.right()), self.bottom().min(o.bottom()));
@@ -53,6 +57,7 @@ pub const LAYOUTS: &[Layout] = &[
     Layout { name: "rows", zones: &[[0.0, 0.0, 1.0, 0.5], [0.0, 0.5, 1.0, 0.5]] },
 ];
 
+#[must_use]
 pub fn layout(name: &str) -> Option<&'static Layout> {
     LAYOUTS.iter().find(|l| l.name == name)
 }
@@ -60,8 +65,9 @@ pub fn layout(name: &str) -> Option<&'static Layout> {
 /// The pixels of `zone` inside `area`. Edges are rounded on their own, so neighbouring zones
 /// share their border exactly. `gap` is kept around the area's edges and between zones
 /// (half on each side of a shared border).
+#[must_use]
 pub fn zone_rect(area: Rect, zone: Zone, gap: u32) -> Rect {
-    let edge = |start: i32, len: u32, f: f64| start + (len as f64 * f).round() as i32;
+    let edge = |start: i32, len: u32, f: f64| start + (f64::from(len) * f).round() as i32;
     let (x0, x1) = (edge(area.x, area.w, zone[0]), edge(area.x, area.w, zone[0] + zone[2]));
     let (y0, y1) = (edge(area.y, area.h, zone[1]), edge(area.y, area.h, zone[1] + zone[3]));
     let g = gap as i32;
@@ -84,6 +90,7 @@ pub enum Change {
 /// Tells a move from a resize. A resize keeps the opposite edge where it was. A move keeps the
 /// size, except when the window manager restores a maximized (or edge-tiled) window as the
 /// drag starts: then no edge stays put, or the window was maximized to begin with.
+#[must_use]
 pub fn change(start: Rect, now: Rect, was_maximized: bool) -> Change {
     if now == start {
         return Change::None;
@@ -111,8 +118,9 @@ pub struct Picker {
 }
 
 /// Places the picker at the top centre of `area` and lays out one thumbnail per layout.
+#[must_use]
 pub fn picker(area: Rect, count: usize) -> Picker {
-    let th = ((THUMB_W as f64) * area.h as f64 / area.w.max(1) as f64).round().clamp(40.0, 90.0) as u32;
+    let th = (f64::from(THUMB_W) * f64::from(area.h) / f64::from(area.w.max(1))).round().clamp(40.0, 90.0) as u32;
     let n = count.max(1) as u32;
     let w = n * THUMB_W + (n - 1) * SPACING + 2 * PAD;
     let h = th + 2 * PAD;
@@ -123,12 +131,14 @@ pub fn picker(area: Rect, count: usize) -> Picker {
 }
 
 /// Below this line the picker closes. Never above the line that opens it, so it cannot flicker.
+#[must_use]
 pub fn picker_close_y(p: &Picker, area: Rect, trigger: u32) -> i32 {
     p.rect.bottom().max(area.y + trigger as i32) + LEAVE
 }
 
 /// The (layout, zone) under the point (x, y), relative to the picker window. Zones cover their
 /// whole thumbnail, so there is no dead space between them.
+#[must_use]
 pub fn hit(p: &Picker, layouts: &[&Layout], x: i32, y: i32) -> Option<(usize, usize)> {
     let (li, thumb) = p.thumbs.iter().enumerate().find(|(_, t)| t.contains(x, y))?;
     let zi = layouts.get(li)?.zones.iter().position(|&z| zone_rect(*thumb, z, 0).contains(x, y))?;
@@ -137,6 +147,7 @@ pub fn hit(p: &Picker, layouts: &[&Layout], x: i32, y: i32) -> Option<(usize, us
 
 /// Square cells of `cell` pixels centred in `area`, at most `count`, as many as fit with an
 /// 8-pixel margin (assist popups).
+#[must_use]
 pub fn grid(area: Rect, count: usize, cell: u32) -> Vec<Rect> {
     let fit_cols = (area.w.saturating_sub(16) / cell).max(1) as usize;
     let fit_rows = (area.h.saturating_sub(16) / cell).max(1) as usize;
@@ -159,11 +170,12 @@ pub fn grid(area: Rect, count: usize, cell: u32) -> Vec<Rect> {
         .collect()
 }
 
-/// A dock or panel's _NET_WM_STRUT_PARTIAL: left, right, top, bottom, then the start and end of
-/// each (left_start_y, left_end_y, right_start_y, right_end_y, top_start_x, top_end_x,
-/// bottom_start_x, bottom_end_x). Plain _NET_WM_STRUT has only the first four values.
+/// A dock or panel's _`NET_WM_STRUT_PARTIAL`: left, right, top, bottom, then the start and end of
+/// each (`left_start_y`, `left_end_y`, `right_start_y`, `right_end_y`, `top_start_x`, `top_end_x`,
+/// `bottom_start_x`, `bottom_end_x`). Plain _`NET_WM_STRUT` has only the first four values.
 pub type Strut = [u32; 12];
 
+#[must_use]
 pub fn strut(values: &[u32], screen: Rect) -> Option<Strut> {
     match values.len() {
         n if n >= 12 => values[..12].try_into().ok(),
@@ -175,8 +187,9 @@ pub fn strut(values: &[u32], screen: Rect) -> Option<Strut> {
     }
 }
 
-/// The part of `monitor` left by the struts of docks and panels. Unlike _NET_WORKAREA, which is
+/// The part of `monitor` left by the struts of docks and panels. Unlike _`NET_WORKAREA`, which is
 /// one rectangle for the whole screen, a panel on one monitor does not shrink the others.
+#[must_use]
 pub fn work_area(monitor: Rect, screen: Rect, struts: &[Strut]) -> Rect {
     let (mut left, mut top, mut right, mut bottom) = (monitor.x, monitor.y, monitor.right(), monitor.bottom());
     let overlaps = |a0: i32, a1: i32, b0: u32, b1: u32| (b0 as i32) < a1 && (b1 as i32) >= a0;
@@ -201,10 +214,11 @@ pub fn work_area(monitor: Rect, screen: Rect, struts: &[Strut]) -> Rect {
     Rect { x: left, y: top, w: (right - left) as u32, h: (bottom - top) as u32 }
 }
 
-/// _NET_MOVERESIZE_WINDOW data that makes a frame with these extents (left, right, top, bottom)
-/// fill `r`: NorthWest gravity (1), x/y/width/height given (0xf00), from a pager-like tool (2 << 12).
-/// With NorthWest gravity, x and y are those of the frame's outer corner; width and height are
+/// _`NET_MOVERESIZE_WINDOW` data that makes a frame with these extents (left, right, top, bottom)
+/// fill `r`: `NorthWest` gravity (1), x/y/width/height given (0xf00), from a pager-like tool (2 << 12).
+/// With `NorthWest` gravity, x and y are those of the frame's outer corner; width and height are
 /// the client's.
+#[must_use]
 pub fn moveresize_data(r: Rect, extents: [u32; 4]) -> [u32; 5] {
     let [l, rt, t, b] = extents;
     let w = r.w.saturating_sub(l + rt).max(1);
@@ -222,8 +236,9 @@ mod tests {
     #[test]
     fn zones_tile_the_area_without_gaps() {
         for l in LAYOUTS {
-            let total: u64 = l.zones.iter().map(|&z| zone_rect(AREA, z, 0)).map(|r| r.w as u64 * r.h as u64).sum();
-            assert_eq!(total, AREA.w as u64 * AREA.h as u64, "{}", l.name);
+            let total: u64 =
+                l.zones.iter().map(|&z| zone_rect(AREA, z, 0)).map(|r| u64::from(r.w) * u64::from(r.h)).sum();
+            assert_eq!(total, u64::from(AREA.w) * u64::from(AREA.h), "{}", l.name);
         }
     }
 
@@ -289,7 +304,7 @@ mod tests {
         let cells = grid(small, 12, 80);
         assert_eq!(cells.len(), 2, "only what fits");
         assert!(cells.iter().all(|c| small.intersect(c) == Some(*c)));
-        assert!(grid(small, 0, 80).is_empty());
+        assert_eq!(grid(small, 0, 80), Vec::<Rect>::new());
     }
 
     #[test]
