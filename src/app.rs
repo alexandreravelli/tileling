@@ -4,8 +4,8 @@
 //! the hovered zone, then tiles the window with _NET_MOVERESIZE_WINDOW and offers the other
 //! windows for the zones that are left.
 
+use anyhow::{Context, anyhow, bail};
 use std::borrow::Cow;
-use std::error::Error;
 use std::time::Duration;
 use tileling::config::Config;
 use tileling::layout::{self, Change, Layout, Picker, Rect, Strut, Zone};
@@ -21,7 +21,7 @@ use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 use x11rb::{CURRENT_TIME, NONE};
 
-pub type Res<T> = Result<T, Box<dyn Error>>;
+pub type Res<T> = anyhow::Result<T>;
 
 x11rb::atom_manager! {
     Atoms: AtomsCookie {
@@ -66,7 +66,7 @@ fn debug() -> bool {
 
 /// Losing the X connection is the only error that stops the daemon; anything else (a window
 /// that went away, a failed drawing) is logged and the next event is handled as usual.
-fn fatal(e: &(dyn Error + 'static)) -> bool {
+fn fatal(e: &anyhow::Error) -> bool {
     e.is::<ConnectionError>()
         || matches!(e.downcast_ref::<ReplyError>(), Some(ReplyError::ConnectionError(_)))
         || matches!(e.downcast_ref::<ReplyOrIdError>(), Some(ReplyOrIdError::ConnectionError(_)))
@@ -164,29 +164,30 @@ fn keycode_of(conn: &RustConnection, keysym: u32) -> Option<Keycode> {
 }
 
 pub fn run(cfg: Config) -> Res<()> {
-    let (conn, screen_num) = x11rb::connect(None)?;
+    let (conn, screen_num) = x11rb::connect(None)
+        .context("cannot connect to the X server (Tileling needs an X11 session; is DISPLAY set?)")?;
     let screen = conn.setup().roots[screen_num].clone();
     let root = screen.root;
 
     // One instance per screen: whoever owns this selection.
     let selection = intern(&conn, &format!("_TILELING_S{screen_num}"))?;
     if conn.get_selection_owner(selection)?.reply()?.owner != NONE {
-        return Err("Tileling is already running".into());
+        bail!("Tileling is already running");
     }
     let owner = conn.generate_id()?;
     conn.create_window(0, owner, root, -1, -1, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &CreateWindowAux::new())?;
     conn.set_selection_owner(owner, selection, CURRENT_TIME)?;
     if conn.get_selection_owner(selection)?.reply()?.owner != owner {
-        return Err("Tileling is already running".into());
+        bail!("Tileling is already running");
     }
 
     if conn.extension_information(xinput::X11_EXTENSION_NAME)?.is_none() {
-        return Err("the X server has no XInput extension".into());
+        bail!("the X server has no XInput extension");
     }
     // Raw events reach every client regardless of grabs from XInput 2.1 on.
     let v = conn.xinput_xi_query_version(2, 2)?.reply()?;
     if (v.major_version, v.minor_version) < (2, 1) {
-        return Err(format!("XInput 2.1 or newer is needed (found {}.{})", v.major_version, v.minor_version).into());
+        bail!("XInput 2.1 or newer is needed (found {}.{})", v.major_version, v.minor_version);
     }
     let atoms = Atoms::new(&conn)?.reply()?;
     let shape = conn.extension_information(shape::X11_EXTENSION_NAME)?.is_some();
@@ -232,7 +233,7 @@ pub fn run(cfg: Config) -> Res<()> {
     loop {
         let event = app.conn.wait_for_event()?;
         if let Err(e) = app.handle(event) {
-            if fatal(e.as_ref()) {
+            if fatal(&e) {
                 return Err(e);
             }
             eprintln!("tileling: {e}");
@@ -698,7 +699,7 @@ impl App {
     fn draw_picker(&self) -> Res<()> {
         let Some(s) = self.shown() else { return Ok(()) };
         let r = s.picker.rect;
-        let mut pm = Pixmap::new(r.w, r.h).ok_or("picker size")?;
+        let mut pm = Pixmap::new(r.w, r.h).ok_or_else(|| anyhow!("cannot draw a picker of {}x{} pixels", r.w, r.h))?;
         let radius = if self.visual.argb { 14.0 } else { 0.0 };
         fill_rrect(&mut pm, Rect { x: 0, y: 0, w: r.w, h: r.h }, radius, rgba(0x1d, 0x1d, 0x1d, 0xeb));
         let [ar, ag, ab] = self.cfg.accent;
@@ -724,7 +725,8 @@ impl App {
         self.place(self.ghost_win, r)?;
         let [ar, ag, ab] = self.cfg.accent;
         if self.visual.argb {
-            let mut pm = Pixmap::new(r.w, r.h).ok_or("preview size")?;
+            let mut pm =
+                Pixmap::new(r.w, r.h).ok_or_else(|| anyhow!("cannot draw a preview of {}x{} pixels", r.w, r.h))?;
             let full = Rect { x: 0, y: 0, w: r.w, h: r.h };
             fill_rrect(&mut pm, full, 12.0, rgba(ar, ag, ab, 0x48));
             stroke_rrect(&mut pm, full, 12.0, 3.0, rgba(ar, ag, ab, 0xd8));
@@ -863,7 +865,8 @@ impl App {
         let Mode::Assist(a) = &self.mode else { return Ok(()) };
         let mut backgrounds = Vec::new();
         for z in &a.zones {
-            let mut pm = Pixmap::new(z.rect.w, z.rect.h).ok_or("assist size")?;
+            let mut pm = Pixmap::new(z.rect.w, z.rect.h)
+                .ok_or_else(|| anyhow!("cannot draw an assist popup of {}x{} pixels", z.rect.w, z.rect.h))?;
             let full = Rect { x: 0, y: 0, w: z.rect.w, h: z.rect.h };
             if self.visual.argb {
                 let [ar, ag, ab] = self.cfg.accent;
@@ -894,7 +897,8 @@ impl App {
     /// Repaints a single cell into a popup's background pixmap.
     fn redraw_cell(&self, z: &AssistZone, ci: usize, icon: Option<&Pixmap>) -> Res<()> {
         let cell = z.cells[ci];
-        let mut pm = Pixmap::new(cell.w, cell.h).ok_or("cell size")?;
+        let mut pm =
+            Pixmap::new(cell.w, cell.h).ok_or_else(|| anyhow!("cannot draw a cell of {}x{} pixels", cell.w, cell.h))?;
         pm.fill(self.assist_fill());
         self.draw_cell(&mut pm, Rect { x: 0, y: 0, ..cell }, icon, z.hovered == Some(ci));
         self.put(z.background, &pm, cell.x as i16, cell.y as i16)?;
@@ -1060,11 +1064,9 @@ mod tests {
 
     #[test]
     fn only_connection_errors_are_fatal() {
-        let conn: Box<dyn Error> = Box::new(ConnectionError::UnknownError);
-        assert!(fatal(conn.as_ref()));
-        let reply: Box<dyn Error> = Box::new(ReplyError::ConnectionError(ConnectionError::UnknownError));
-        assert!(fatal(reply.as_ref()));
-        let other: Box<dyn Error> = "picker size".into();
-        assert!(!fatal(other.as_ref()));
+        assert!(fatal(&anyhow::Error::from(ConnectionError::UnknownError)));
+        let reply = ReplyError::ConnectionError(ConnectionError::UnknownError);
+        assert!(fatal(&anyhow::Error::from(reply).context("while tiling")));
+        assert!(!fatal(&anyhow!("cannot draw a picker of 0x0 pixels")));
     }
 }
