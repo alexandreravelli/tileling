@@ -2,40 +2,46 @@
 
 mod app;
 
+use std::path::PathBuf;
+use std::process::ExitCode;
 use tileling::config;
 
 const USAGE: &str = "\
-Usage: tileling [--check-config | --version | --help]
+Usage: tileling [--check-config [FILE] | --version | --help]
 
 Drag a window towards the top of the screen: a layout picker appears. Drop the window on a zone
 to tile it there, then pick the windows that fill the other zones.
 
-  --check-config   print the configuration in use and any problem in it, then exit
-  --version        print the version
-  --help           print this help
+  --check-config [FILE]  list the problems of the configuration file, then the settings in use
+  --version              print the version
+  --help                 print this help
 
 Configuration: ~/.config/tileling/config.toml (else /etc/xdg/tileling/config.toml).
 Set TILELING_DEBUG=1 to log what Tileling does.";
 
-fn main() {
-    match std::env::args().nth(1).as_deref() {
-        Some("--help" | "-h") => println!("{USAGE}"),
-        Some("--version" | "-V") => println!("tileling {}", env!("CARGO_PKG_VERSION")),
-        Some("--check-config") => {
-            let path = config::path();
-            println!("file: {}", path.as_ref().map_or("(none, built-in defaults)".into(), |p| p.display().to_string()));
-            println!("{:#?}", load());
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("--help" | "-h") => {
+            println!("{USAGE}");
+            ExitCode::SUCCESS
         }
+        Some("--version" | "-V") => {
+            println!("tileling {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
+        Some("--check-config") => check_config(args.get(1).map(PathBuf::from)),
         Some(other) => {
             eprintln!("tileling: unknown option {other}\n\n{USAGE}");
-            std::process::exit(2);
+            ExitCode::from(2)
         }
-        None => {
-            if let Err(e) = app::run(load()) {
+        None => match app::run(load()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
                 eprintln!("tileling: {e:#}");
-                std::process::exit(1);
+                ExitCode::FAILURE
             }
-        }
+        },
     }
 }
 
@@ -54,4 +60,34 @@ fn load() -> config::Config {
             config::Config::default()
         }
     }
+}
+
+/// `--check-config [FILE]`: the problems of the file, one per line (`file:line: message`, as
+/// compilers write them), then the settings in use. Fails when there is a problem.
+fn check_config(file: Option<PathBuf>) -> ExitCode {
+    let loaded = match file {
+        Some(path) => config::load_from(&path),
+        None => config::load(),
+    };
+    let loaded = match loaded {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("tileling: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let name = loaded.path.as_ref().map_or_else(|| "(no file: built-in defaults)".into(), |p| p.display().to_string());
+    for w in &loaded.warnings {
+        match w.line {
+            Some(line) => println!("{name}:{line}: {}", w.message),
+            None => println!("{name}: {}", w.message),
+        }
+    }
+    match loaded.warnings.len() {
+        0 => println!("{name}: OK"),
+        1 => println!("1 problem: Tileling skips this setting and uses the others."),
+        n => println!("{n} problems: Tileling skips these settings and uses the others."),
+    }
+    println!("\n# Settings in use\n{}", loaded.config);
+    if loaded.warnings.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
