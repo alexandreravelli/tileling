@@ -1,5 +1,5 @@
-//! Test driver (not shipped): fakes real pointer input with XTest, like a hand on the mouse.
-//!   xtest move X Y | down | up | click X Y | key KEYCODE... | path X1 Y1 X2 Y2 STEPS DELAY_MS
+//! Test driver (not shipped): fakes real pointer input with `XTest`, like a hand on the mouse.
+//!   xtest move X Y | down | up | click X Y | key KEYCODE... | path X1 Y1 X2 Y2 STEPS `DELAY_MS`
 
 use std::{thread::sleep, time::Duration};
 use x11rb::connection::Connection;

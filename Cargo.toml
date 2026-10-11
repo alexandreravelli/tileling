@@ -16,6 +16,18 @@ tiny-skia = { version = "0.12", default-features = false, features = ["std", "si
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 x11rb = { version = "0.14", features = ["image", "randr", "shape", "xinput"] }
 
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Tileling converts between X11's i16/u16, pixel i32/u32 and tiny-skia's f32 all the time.
+# Screen coordinates and sizes stay far inside every one of these ranges, and checked
+# conversions at each step would hide the geometry.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+# x, y, w, h, r, g, b are the clearest names in drawing code.
+many_single_char_names = "allow"
+
 [profile.release]
 opt-level = 3
 lto = true

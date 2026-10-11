@@ -1,5 +1,5 @@
 //! Configuration: ~/.config/tileling/config.toml, else the first tileling/config.toml in
-//! $XDG_CONFIG_DIRS (default /etc/xdg), else the built-in defaults. Unknown keys and bad values
+//! $`XDG_CONFIG_DIRS` (default /etc/xdg), else the built-in defaults. Unknown keys and bad values
 //! are reported and ignored one by one: one typo never resets the whole file.
 
 use crate::layout;

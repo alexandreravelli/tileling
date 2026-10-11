@@ -1,7 +1,7 @@
 //! The X11 side. Tileling sleeps until the left mouse button goes down. While a window is dragged
-//! it follows the pointer through XInput 2 raw events (delivered even while the window manager
+//! it follows the pointer through `XInput` 2 raw events (delivered even while the window manager
 //! holds the pointer grab), shows the layout picker near the top of the screen and a preview of
-//! the hovered zone, then tiles the window with _NET_MOVERESIZE_WINDOW and offers the other
+//! the hovered zone, then tiles the window with _`NET_MOVERESIZE_WINDOW` and offers the other
 //! windows for the zones that are left.
 
 use anyhow::{Context, anyhow, bail};
@@ -17,7 +17,12 @@ use x11rb::protocol::Event;
 use x11rb::protocol::randr::ConnectionExt as _;
 use x11rb::protocol::shape::{self, ConnectionExt as _};
 use x11rb::protocol::xinput::{self, ConnectionExt as _, XIEventMask};
-use x11rb::protocol::xproto::*;
+use x11rb::protocol::xproto::{
+    Atom, AtomEnum, ChangeWindowAttributesAux, ClientMessageEvent, ClipOrdering, Colormap, ColormapAlloc,
+    ConfigureWindowAux, ConnectionExt, CreateGCAux, CreateWindowAux, Drawable, EventMask, Gcontext, GrabMode,
+    GrabStatus, Keycode, ModMask, QueryPointerReply, Rectangle, Screen, StackMode, Timestamp, VisualClass, Visualid,
+    Window, WindowClass,
+};
 use x11rb::rust_connection::RustConnection;
 use x11rb::{CURRENT_TIME, NONE};
 
@@ -342,7 +347,7 @@ impl App {
             .get_property(false, w, prop, ty, 0, u32::MAX / 4)
             .ok()
             .and_then(|c| c.reply().ok())
-            .and_then(|r| r.value32().map(|v| v.collect()))
+            .and_then(|r| r.value32().map(std::iter::Iterator::collect))
             .unwrap_or_default()
     }
 
@@ -353,7 +358,10 @@ impl App {
         cookies
             .into_iter()
             .map(|c| {
-                c.ok().and_then(|c| c.reply().ok()).and_then(|r| r.value32().map(|v| v.collect())).unwrap_or_default()
+                c.ok()
+                    .and_then(|c| c.reply().ok())
+                    .and_then(|r| r.value32().map(std::iter::Iterator::collect))
+                    .unwrap_or_default()
             })
             .collect()
     }
@@ -364,7 +372,7 @@ impl App {
 
     fn geometry(&self, w: Window) -> Option<Rect> {
         let g = self.conn.get_geometry(w).ok()?.reply().ok()?;
-        Some(Rect { x: g.x as i32, y: g.y as i32, w: g.width as u32, h: g.height as u32 })
+        Some(Rect { x: i32::from(g.x), y: i32::from(g.y), w: u32::from(g.width), h: u32::from(g.height) })
     }
 
     fn clients(&self) -> Vec<Window> {
@@ -404,7 +412,7 @@ impl App {
         let state = self.prop32(w, self.atoms._NET_WM_STATE, AtomEnum::ATOM);
         let hints = self.prop32(w, AtomEnum::WM_NORMAL_HINTS, AtomEnum::WM_SIZE_HINTS);
         // WM_SIZE_HINTS: flags, 4 obsolete fields, min width/height, max width/height (PMinSize = 16, PMaxSize = 32).
-        let fixed = hints.len() >= 9 && hints[0] & 48 == 48 && hints[5] == hints[7] && hints[6] == hints[8];
+        let fixed = hints.len() >= 9 && hints[0] & 0x30 == 0x30 && hints[5] == hints[7] && hints[6] == hints[8];
         (types.is_empty() || types.contains(&self.atoms._NET_WM_WINDOW_TYPE_NORMAL))
             && !state.contains(&self.atoms._NET_WM_STATE_FULLSCREEN)
             && !state.contains(&self.atoms._NET_WM_STATE_SKIP_TASKBAR)
@@ -416,7 +424,7 @@ impl App {
     }
 
     /// The work area of the monitor under (x, y): the monitor minus the docks and panels that
-    /// reserve space on it. Falls back to _NET_WORKAREA when no window declares struts.
+    /// reserve space on it. Falls back to _`NET_WORKAREA` when no window declares struts.
     fn work_area(&self, x: i32, y: i32) -> Rect {
         let screen = self.geometry(self.root).unwrap_or(Rect { x: 0, y: 0, w: 1024, h: 768 });
         let monitors: Vec<Rect> = self
@@ -427,7 +435,12 @@ impl App {
             .map(|r| {
                 r.monitors
                     .iter()
-                    .map(|m| Rect { x: m.x as i32, y: m.y as i32, w: m.width as u32, h: m.height as u32 })
+                    .map(|m| Rect {
+                        x: i32::from(m.x),
+                        y: i32::from(m.y),
+                        w: u32::from(m.width),
+                        h: u32::from(m.height),
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -604,7 +617,7 @@ impl App {
         }
 
         let Some(ptr) = self.pointer() else { return Ok(()) };
-        let (px, py) = (ptr.root_x as i32, ptr.root_y as i32);
+        let (px, py) = (i32::from(ptr.root_x), i32::from(ptr.root_y));
         let Mode::Drag(d) = &mut self.mode else { return Ok(()) };
         d.moved = true;
         let area = match d.area {
@@ -647,7 +660,7 @@ impl App {
         let (Some(shown), true) = (drag.shown, drag.moved) else { return Ok(()) };
         // Motion events are throttled: hit-test the pointer where it really is.
         let Some(ptr) = self.pointer() else { return Ok(()) };
-        let (x, y) = (ptr.root_x as i32 - shown.picker.rect.x, ptr.root_y as i32 - shown.picker.rect.y);
+        let (x, y) = (i32::from(ptr.root_x) - shown.picker.rect.x, i32::from(ptr.root_y) - shown.picker.rect.y);
         let Some((li, zi)) = layout::hit(&shown.picker, &self.layouts, x, y) else { return Ok(()) };
 
         self.wait_for_window_manager()?;
@@ -795,7 +808,7 @@ impl App {
             self.upload(self.ghost_win, &pm)?;
         } else {
             // Without a compositor: a solid 4-pixel outline cut out with the Shape extension.
-            let pixel = (ar as u32) << 16 | (ag as u32) << 8 | ab as u32;
+            let pixel = u32::from(ar) << 16 | u32::from(ag) << 8 | u32::from(ab);
             self.conn
                 .change_window_attributes(self.ghost_win, &ChangeWindowAttributesAux::new().background_pixel(pixel))?;
             if self.shape {
@@ -913,12 +926,11 @@ impl App {
             fill_rrect(pm, inner, 10.0, rgba(0xff, 0xff, 0xff, 0x2c));
         }
         let (ix, iy) = (cell.x + (cell.w - ICON) as i32 / 2, cell.y + (cell.h - ICON) as i32 / 2);
-        match icon {
-            Some(icon) => pm.draw_pixmap(ix, iy, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None),
-            None => {
-                let [ar, ag, ab] = self.cfg.accent;
-                fill_rrect(pm, Rect { x: ix, y: iy, w: ICON, h: ICON }, 10.0, rgba(ar, ag, ab, 0xff));
-            }
+        if let Some(icon) = icon {
+            pm.draw_pixmap(ix, iy, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+        } else {
+            let [ar, ag, ab] = self.cfg.accent;
+            fill_rrect(pm, Rect { x: ix, y: iy, w: ICON, h: ICON }, 10.0, rgba(ar, ag, ab, 0xff));
         }
     }
 
@@ -971,7 +983,7 @@ impl App {
     fn assist_hover(&mut self, win: Window, at: Option<(i16, i16)>) -> Res<()> {
         let Mode::Assist(a) = &mut self.mode else { return Ok(()) };
         let Some(z) = a.zones.iter_mut().find(|z| z.win == win) else { return Ok(()) };
-        let hovered = at.and_then(|(x, y)| z.cells.iter().position(|c| c.contains(x as i32, y as i32)));
+        let hovered = at.and_then(|(x, y)| z.cells.iter().position(|c| c.contains(i32::from(x), i32::from(y))));
         let before = std::mem::replace(&mut z.hovered, hovered);
         if before == hovered {
             return Ok(());
@@ -987,7 +999,9 @@ impl App {
     fn assist_click(&mut self, win: Window, x: i16, y: i16, time: Timestamp) -> Res<()> {
         let Mode::Assist(a) = &mut self.mode else { return Ok(()) };
         let Some(i) = a.zones.iter().position(|z| z.win == win) else { return Ok(()) };
-        let Some(ci) = a.zones[i].cells.iter().position(|c| c.contains(x as i32, y as i32)) else { return Ok(()) };
+        let Some(ci) = a.zones[i].cells.iter().position(|c| c.contains(i32::from(x), i32::from(y))) else {
+            return Ok(());
+        };
         let (client, _) = a.candidates.remove(ci);
         let zone = a.zones.remove(i);
         let area = a.area;
@@ -1053,7 +1067,7 @@ fn stroke_rrect(pm: &mut Pixmap, r: Rect, radius: f32, width: f32, color: Color)
     }
 }
 
-/// The best fitting image of _NET_WM_ICON (several ARGB images), scaled to `size`.
+/// The best fitting image of _`NET_WM_ICON` (several ARGB images), scaled to `size`.
 pub fn from_net_wm_icon(data: &[u32], size: u32) -> Option<Pixmap> {
     let mut best: Option<(u32, u32, &[u32])> = None;
     let mut rest = data;
@@ -1103,8 +1117,8 @@ mod tests {
 
     #[test]
     fn picks_the_closest_icon_and_scales_it() {
-        let mut data = image(2, 2, 0xffff0000);
-        data.extend(image(4, 4, 0xff0000ff));
+        let mut data = image(2, 2, 0xffff_0000);
+        data.extend(image(4, 4, 0xff00_00ff));
         let icon = from_net_wm_icon(&data, 4).unwrap();
         assert_eq!((icon.width(), icon.height()), (4, 4));
         let px = icon.pixel(1, 1).unwrap();
@@ -1113,14 +1127,14 @@ mod tests {
 
     #[test]
     fn non_square_icons_are_centred() {
-        let icon = from_net_wm_icon(&image(8, 4, 0xff00ff00), 8).unwrap();
+        let icon = from_net_wm_icon(&image(8, 4, 0xff00_ff00), 8).unwrap();
         assert_eq!(icon.pixel(4, 0).unwrap().alpha(), 0, "letterboxed above");
         assert_eq!(icon.pixel(4, 4).unwrap().green(), 255, "image in the middle");
     }
 
     #[test]
     fn truncated_icon_data_is_rejected() {
-        assert!(from_net_wm_icon(&[16, 16, 0xffffffff], 16).is_none());
+        assert!(from_net_wm_icon(&[16, 16, 0xffff_ffff], 16).is_none());
         assert!(from_net_wm_icon(&[], 16).is_none());
     }
 
