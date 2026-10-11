@@ -4,11 +4,11 @@
 //! the hovered zone, then tiles the window with _NET_MOVERESIZE_WINDOW and offers the other
 //! windows for the zones that are left.
 
-use tileling::config::Config;
-use tileling::layout::{self, Change, Layout, Picker, Rect, Strut, Zone};
 use std::borrow::Cow;
 use std::error::Error;
 use std::time::Duration;
+use tileling::config::Config;
+use tileling::layout::{self, Change, Layout, Picker, Rect, Strut, Zone};
 use tiny_skia::{Color, FillRule, FilterQuality, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform};
 use x11rb::connection::{Connection, RequestConnection};
 use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
