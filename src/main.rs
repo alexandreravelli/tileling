@@ -32,7 +32,7 @@ fn main() {
         }
         None => {
             if let Err(e) = app::run(load()) {
-                eprintln!("tileling: {e}");
+                eprintln!("tileling: {e:#}");
                 std::process::exit(1);
             }
         }
