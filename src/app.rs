@@ -4,8 +4,8 @@
 //! the hovered zone, then tiles the window with _NET_MOVERESIZE_WINDOW and offers the other
 //! windows for the zones that are left.
 
-use crate::config::Config;
-use crate::layout::{self, Change, Layout, Picker, Rect, Strut, Zone};
+use tileling::config::Config;
+use tileling::layout::{self, Change, Layout, Picker, Rect, Strut, Zone};
 use std::borrow::Cow;
 use std::error::Error;
 use std::time::Duration;
