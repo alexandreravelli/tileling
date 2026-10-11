@@ -11,24 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(cli)* add --reload, --quit and --replace
-- *(cli)* list configuration problems with --check-config [FILE]
+- `tileling --reload` makes the running Tileling read its configuration again, `--quit` stops it and `--replace` starts a new one that takes over: no more `pkill -x tileling; tileling &`.
+- `tileling --check-config [FILE]` lists the problems of the configuration file as `file:line: message`, then the settings in use, and exits with 1 when there is a problem.
+- The crate is packaged for crates.io (`cargo install tileling`), with its layout and configuration library documented for docs.rs.
 
 ### Changed
 
-- report errors with anyhow and context
-- *(config)* [**breaking**] return problems with their line instead of printing them
-- move the layouts and the configuration into a library
-
-### Documentation
-
-- *(readme)* commands, --check-config, crates.io and how to contribute
-- use the Keep a Changelog format
-- document the library API with tested examples
-
-### Other
-
-- Replace the README screenshot with docs/layout-picker.png
+- Configuration messages say what was expected and suggest close names: `invalid value for "trigger": -1 (expected a whole number from 4 to 200)`, `unknown setting "triger". Did you mean "trigger"?`
+- Clearer error messages, for example when there is no X server to connect to.
+- Each release runs every check (tests on Xvfb, Clippy, MSRV, cargo-deny, the static build) before anything is published, and also carries `tileling_amd64.deb` under a name that does not change.
+- Library: `config::parse` returns the settings and their warnings instead of taking a callback, and `config::load` returns `Result<Loaded, ConfigError>`.
 
 ## [0.1.0](https://github.com/alexandreravelli/tileling/releases/tag/v0.1.0) - 2026-10-11
 
