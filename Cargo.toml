@@ -8,6 +8,20 @@ license = "MIT"
 readme = "README.md"
 keywords = ["tiling", "x11", "xfce", "window-manager", "debian"]
 categories = ["gui"]
+repository = "https://github.com/alexandreravelli/tileling"
+homepage = "https://github.com/alexandreravelli/tileling"
+documentation = "https://docs.rs/tileling"
+# What crates.io gets: the sources, the tests and the files the package uses.
+include = [
+    "/src",
+    "/tests",
+    "/examples",
+    "/config/default.toml",
+    "/data",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [dependencies]
 anyhow = "1"
