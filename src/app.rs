@@ -43,7 +43,17 @@ x11rb::atom_manager! {
         _NET_FRAME_EXTENTS,
         _NET_MOVERESIZE_WINDOW,
         _NET_WM_ICON,
+        _TILELING_COMMAND,
     }
+}
+
+/// Commands sent to the running Tileling (`tileling --reload`, `--quit`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Command {
+    /// Read the configuration file again.
+    Reload = 1,
+    /// Stop.
+    Quit = 2,
 }
 
 /// Icon size and cell size in the assist popups.
@@ -126,6 +136,8 @@ pub struct App {
     conn: RustConnection,
     root: Window,
     selection: Atom,
+    /// The window that owns the selection, where commands arrive.
+    owner: Window,
     compositor: Atom,
     atoms: Atoms,
     root_visual: Visual,
@@ -163,16 +175,42 @@ fn keycode_of(conn: &RustConnection, keysym: u32) -> Option<Keycode> {
     map.keysyms.chunks(per).position(|syms| syms.contains(&keysym)).map(|i| min + i as u8)
 }
 
-pub fn run(cfg: Config) -> Res<()> {
-    let (conn, screen_num) = x11rb::connect(None)
-        .context("cannot connect to the X server (Tileling needs an X11 session; is DISPLAY set?)")?;
+/// Connects to the X server of `$DISPLAY`.
+fn connect() -> Res<(RustConnection, usize)> {
+    x11rb::connect(None).context("cannot connect to the X server (Tileling needs an X11 session; is DISPLAY set?)")
+}
+
+/// The selection whose owner is the running Tileling of the screen.
+fn selection_atom(conn: &RustConnection, screen_num: usize) -> Res<Atom> {
+    intern(conn, &format!("_TILELING_S{screen_num}"))
+}
+
+/// Sends `command` to the running Tileling.
+pub fn send(command: Command) -> Res<()> {
+    let (conn, screen_num) = connect()?;
+    let owner = conn.get_selection_owner(selection_atom(&conn, screen_num)?)?.reply()?.owner;
+    if owner == NONE {
+        bail!("Tileling is not running");
+    }
+    let atom = intern(&conn, "_TILELING_COMMAND")?;
+    let event = ClientMessageEvent::new(32, owner, atom, [command as u32, 0, 0, 0, 0]);
+    conn.send_event(false, owner, EventMask::NO_EVENT, event)?;
+    // A round trip, so the server has the event before the connection closes.
+    conn.get_input_focus()?.reply()?;
+    Ok(())
+}
+
+/// Runs Tileling until the X connection is lost or a `quit` command arrives. With `replace`,
+/// a running Tileling is asked to stop (it loses the selection) instead of refusing to start.
+pub fn run(cfg: Config, replace: bool) -> Res<()> {
+    let (conn, screen_num) = connect()?;
     let screen = conn.setup().roots[screen_num].clone();
     let root = screen.root;
 
     // One instance per screen: whoever owns this selection.
-    let selection = intern(&conn, &format!("_TILELING_S{screen_num}"))?;
-    if conn.get_selection_owner(selection)?.reply()?.owner != NONE {
-        bail!("Tileling is already running");
+    let selection = selection_atom(&conn, screen_num)?;
+    if !replace && conn.get_selection_owner(selection)?.reply()?.owner != NONE {
+        bail!("Tileling is already running (use --replace to replace it)");
     }
     let owner = conn.generate_id()?;
     conn.create_window(0, owner, root, -1, -1, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &CreateWindowAux::new())?;
@@ -208,6 +246,7 @@ pub fn run(cfg: Config) -> Res<()> {
         conn,
         root,
         selection,
+        owner,
         compositor,
         atoms,
         root_visual,
@@ -253,7 +292,18 @@ impl App {
             Event::LeaveNotify(e) => self.assist_hover(e.event, None),
             // Only Escape is grabbed, and only while the assist popups are open.
             Event::KeyPress(_) => self.close_assist(),
+            // Another Tileling took over (--replace).
             Event::SelectionClear(e) if e.selection == self.selection => std::process::exit(0),
+            Event::ClientMessage(e) if e.window == self.owner && e.type_ == self.atoms._TILELING_COMMAND => {
+                match e.data.as_data32()[0] {
+                    c if c == Command::Reload as u32 => self.reload(),
+                    c if c == Command::Quit as u32 => {
+                        self.conn.flush()?;
+                        std::process::exit(0)
+                    }
+                    _ => Ok(()),
+                }
+            }
             // Requests on windows that went away in the meantime: nothing to do.
             Event::Error(e) if debug() => {
                 eprintln!("tileling: X error {:?}", e.error_kind);
@@ -261,6 +311,18 @@ impl App {
             }
             _ => Ok(()),
         }
+    }
+
+    /// Reads the configuration again; a drag or the assist popups in progress are closed first.
+    fn reload(&mut self) -> Res<()> {
+        self.end_drag()?;
+        self.close_assist()?;
+        self.cfg = crate::load();
+        self.layouts = self.cfg.layouts.iter().filter_map(|n| layout::layout(n)).collect();
+        if debug() {
+            eprintln!("tileling: configuration reloaded (layouts: {:?})", self.cfg.layouts);
+        }
+        Ok(())
     }
 
     // ---- X helpers -----------------------------------------------------------------------------

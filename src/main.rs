@@ -7,11 +7,14 @@ use std::process::ExitCode;
 use tileling::config;
 
 const USAGE: &str = "\
-Usage: tileling [--check-config [FILE] | --version | --help]
+Usage: tileling [--replace | --reload | --quit | --check-config [FILE] | --version | --help]
 
 Drag a window towards the top of the screen: a layout picker appears. Drop the window on a zone
 to tile it there, then pick the windows that fill the other zones.
 
+  --replace              start, replacing the running Tileling
+  --reload               make the running Tileling read its configuration again
+  --quit                 stop the running Tileling
   --check-config [FILE]  list the problems of the configuration file, then the settings in use
   --version              print the version
   --help                 print this help
@@ -31,22 +34,30 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("--check-config") => check_config(args.get(1).map(PathBuf::from)),
+        Some("--reload") => report(app::send(app::Command::Reload)),
+        Some("--quit") => report(app::send(app::Command::Quit)),
+        Some("--replace") => report(app::run(load(), true)),
         Some(other) => {
             eprintln!("tileling: unknown option {other}\n\n{USAGE}");
             ExitCode::from(2)
         }
-        None => match app::run(load()) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("tileling: {e:#}");
-                ExitCode::FAILURE
-            }
-        },
+        None => report(app::run(load(), false)),
+    }
+}
+
+/// The exit code of a result; an error is printed first.
+fn report(result: anyhow::Result<()>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("tileling: {e:#}");
+            ExitCode::FAILURE
+        }
     }
 }
 
 /// The configuration in use; its problems go to stderr.
-fn load() -> config::Config {
+pub(crate) fn load() -> config::Config {
     match config::load() {
         Ok(loaded) => {
             let file = loaded.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
