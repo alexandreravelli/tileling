@@ -10,6 +10,8 @@ keywords = ["tiling", "x11", "xfce", "window-manager", "debian"]
 categories = ["gui"]
 
 [dependencies]
+anyhow = "1"
+thiserror = "2"
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 x11rb = { version = "0.14", features = ["image", "randr", "shape", "xinput"] }

@@ -24,17 +24,34 @@ fn main() {
         Some("--check-config") => {
             let path = config::path();
             println!("file: {}", path.as_ref().map_or("(none, built-in defaults)".into(), |p| p.display().to_string()));
-            println!("{:#?}", config::load());
+            println!("{:#?}", load());
         }
         Some(other) => {
             eprintln!("tileling: unknown option {other}\n\n{USAGE}");
             std::process::exit(2);
         }
         None => {
-            if let Err(e) = app::run(config::load()) {
+            if let Err(e) = app::run(load()) {
                 eprintln!("tileling: {e}");
                 std::process::exit(1);
             }
+        }
+    }
+}
+
+/// The configuration in use; its problems go to stderr.
+fn load() -> config::Config {
+    match config::load() {
+        Ok(loaded) => {
+            let file = loaded.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+            for w in &loaded.warnings {
+                eprintln!("tileling: {file}: {w}");
+            }
+            loaded.config
+        }
+        Err(e) => {
+            eprintln!("tileling: {e}; using the defaults");
+            config::Config::default()
         }
     }
 }
