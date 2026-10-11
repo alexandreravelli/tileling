@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/alexandreravelli/tileling/compare/v0.1.0...v0.2.0) - 2026-10-11
+
+### Added
+
+- *(cli)* add --reload, --quit and --replace
+- *(cli)* list configuration problems with --check-config [FILE]
+
+### Changed
+
+- report errors with anyhow and context
+- *(config)* [**breaking**] return problems with their line instead of printing them
+- move the layouts and the configuration into a library
+
+### Documentation
+
+- *(readme)* commands, --check-config, crates.io and how to contribute
+- use the Keep a Changelog format
+- document the library API with tested examples
+
+### Other
+
+- Replace the README screenshot with docs/layout-picker.png
+
 ## [0.1.0](https://github.com/alexandreravelli/tileling/releases/tag/v0.1.0) - 2026-10-11
 
 ### Added
