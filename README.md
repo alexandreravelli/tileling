@@ -16,7 +16,7 @@
 
 [Install](#-install) · [Usage](#%EF%B8%8F-usage) · [Settings](#%EF%B8%8F-settings) · [Changelog](CHANGELOG.md)
 
-<img src="docs/screenshot.png" alt="Dragging a window to the top of the screen opens the layout picker; a blue preview shows where the window will go" width="720">
+<img src="docs/layout-picker.png" alt="Dragging a window to the top of the screen opens the layout picker at the top centre" width="720">
 
 </div>
 
