@@ -1,15 +1,16 @@
 name: Release
 
 # Publishes a release whenever main carries a version (Cargo.toml) that has no release yet:
-# bump `version`, add a CHANGELOG.md section, push to main. The checks run first, and nothing
-# is published if one fails.
+# merge the release pull request that release-plz opens (or bump `version` and add a
+# CHANGELOG.md section by hand), and push to main. Every CI check runs first, and nothing is
+# published if one fails.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -18,7 +19,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       released: ${{ steps.version.outputs.released }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -31,22 +32,16 @@ jobs:
             echo "released=false" >> "$GITHUB_OUTPUT"
           fi
 
-  test:
+  checks:
     needs: check
     if: needs.check.outputs.released == 'false'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --locked
+    uses: ./.github/workflows/ci.yml
 
   release:
-    needs: [check, test]
+    needs: [check, checks]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     # A static (musl) binary, built and packaged on Debian 13.
     container: debian:trixie
     env:
@@ -58,9 +53,10 @@ jobs:
           apt-get update
           # dpkg-dev provides dpkg-shlibdeps, which cargo-deb runs.
           apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev git dpkg-dev
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
+          toolchain: stable
           targets: x86_64-unknown-linux-musl
       - name: Build the binary and the Debian package
         run: |
@@ -71,17 +67,42 @@ jobs:
         run: |
           mkdir dist
           cp target/"$TARGET"/debian/*.deb dist/
+          # The same package under a name that does not change, for the install instructions.
+          cp target/"$TARGET"/debian/*.deb dist/tileling_amd64.deb
           tar czf "dist/tileling-v${VERSION}-x86_64-linux.tar.gz" \
             -C target/"$TARGET"/release tileling \
             -C "$GITHUB_WORKSPACE" README.md LICENSE CHANGELOG.md config/default.toml data/tileling.desktop
-          (cd dist && sha256sum * > SHA256SUMS)
-          # Release notes: this version's section of the changelog.
-          awk -v v="$VERSION" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          # Release notes: this version's section of the changelog ("## [1.2.3] - date" or
+          # "## [1.2.3](compare link) - date"), without the link definitions at the end.
+          awk -v v="[$VERSION]" 'index($0, "## " v) == 1 {on=1; next} /^## / {on=0} /^\[.*\]: / {next} on' CHANGELOG.md > notes.md
           test -s notes.md || { echo "CHANGELOG.md has no section for $VERSION"; exit 1; }
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           name: Tileling v${{ env.VERSION }}
           body_path: notes.md
           files: dist/*
+
+  # Off until the PUBLISH_CRATE repository variable is "true": publish the first version by
+  # hand (`cargo publish`), add this repository and release.yml as a trusted publisher on
+  # crates.io, then set the variable. No token is stored: crates.io trusts the workflow.
+  crates-io:
+    name: Publish to crates.io
+    needs: [check, release]
+    if: vars.PUBLISH_CRATE == 'true' && needs.check.outputs.released == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        id: auth
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
