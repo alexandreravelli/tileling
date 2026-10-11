@@ -1,30 +1,60 @@
 //! Layouts, zones, work areas and drag classification. Pure functions, no X11.
+//!
+//! ```
+//! use tileling::layout::{self, Rect};
+//!
+//! // A 1920x1080 screen with a 26-pixel panel at the top.
+//! let area = Rect { x: 0, y: 26, w: 1920, h: 1054 };
+//! let halves = layout::layout("halves").expect("a built-in layout");
+//! let left = layout::zone_rect(area, halves.zones[0], 8);
+//! let right = layout::zone_rect(area, halves.zones[1], 8);
+//! assert_eq!(left, Rect { x: 8, y: 34, w: 948, h: 1038 });
+//! // 8 pixels around the area, and 8 between the two zones (4 on each side).
+//! assert_eq!(right.x - left.right(), 8);
+//! assert_eq!(area.right() - right.right(), 8);
+//! ```
 
 /// A rectangle in screen pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Rect {
+    /// Left edge.
     pub x: i32,
+    /// Top edge.
     pub y: i32,
+    /// Width.
     pub w: u32,
+    /// Height.
     pub h: u32,
 }
 
 impl Rect {
+    /// The first column right of the rectangle (`x + w`).
     #[must_use]
     pub fn right(&self) -> i32 {
         self.x + self.w as i32
     }
 
+    /// The first row below the rectangle (`y + h`).
     #[must_use]
     pub fn bottom(&self) -> i32 {
         self.y + self.h as i32
     }
 
+    /// True when the pixel (x, y) is inside.
     #[must_use]
     pub fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x && y >= self.y && x < self.right() && y < self.bottom()
     }
 
+    /// The part of both rectangles, None when they do not overlap.
+    ///
+    /// ```
+    /// use tileling::layout::Rect;
+    ///
+    /// let a = Rect { x: 0, y: 0, w: 100, h: 100 };
+    /// assert_eq!(a.intersect(&Rect { x: 50, y: 50, w: 100, h: 100 }), Some(Rect { x: 50, y: 50, w: 50, h: 50 }));
+    /// assert_eq!(a.intersect(&Rect { x: 100, y: 0, w: 10, h: 10 }), None, "touching is not overlapping");
+    /// ```
     #[must_use]
     pub fn intersect(&self, o: &Rect) -> Option<Rect> {
         let (x0, y0) = (self.x.max(o.x), self.y.max(o.y));
@@ -36,8 +66,11 @@ impl Rect {
 /// A zone as fractions of the work area: x, y, width, height in 0..=1.
 pub type Zone = [f64; 4];
 
+/// A layout of the picker: named zones that tile the work area together.
 pub struct Layout {
+    /// The name used in the configuration file (`"halves"`).
     pub name: &'static str,
+    /// The zones, from left to right then top to bottom.
     pub zones: &'static [Zone],
 }
 
@@ -57,6 +90,14 @@ pub const LAYOUTS: &[Layout] = &[
     Layout { name: "rows", zones: &[[0.0, 0.0, 1.0, 0.5], [0.0, 0.5, 1.0, 0.5]] },
 ];
 
+/// The built-in layout called `name`.
+///
+/// ```
+/// use tileling::layout;
+///
+/// assert_eq!(layout::layout("quarters").map(|l| l.zones.len()), Some(4));
+/// assert!(layout::layout("spiral").is_none());
+/// ```
 #[must_use]
 pub fn layout(name: &str) -> Option<&'static Layout> {
     LAYOUTS.iter().find(|l| l.name == name)
@@ -82,14 +123,25 @@ pub fn zone_rect(area: Rect, zone: Zone, gap: u32) -> Rect {
 /// What a window's frame did since the button went down.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Change {
+    /// The frame did not change.
     None,
+    /// The window is being moved.
     Move,
+    /// The window is being resized.
     Resize,
 }
 
 /// Tells a move from a resize. A resize keeps the opposite edge where it was. A move keeps the
 /// size, except when the window manager restores a maximized (or edge-tiled) window as the
 /// drag starts: then no edge stays put, or the window was maximized to begin with.
+///
+/// ```
+/// use tileling::layout::{Change, Rect, change};
+///
+/// let start = Rect { x: 100, y: 100, w: 800, h: 600 };
+/// assert_eq!(change(start, Rect { x: 150, y: 90, ..start }, false), Change::Move);
+/// assert_eq!(change(start, Rect { w: 900, h: 650, ..start }, false), Change::Resize, "top-left corner kept");
+/// ```
 #[must_use]
 pub fn change(start: Rect, now: Rect, was_maximized: bool) -> Change {
     if now == start {
@@ -103,13 +155,16 @@ pub fn change(start: Rect, now: Rect, was_maximized: bool) -> Change {
     if edge_kept { Change::Resize } else { Change::Move }
 }
 
-/// Size of one layout thumbnail in the picker, with the work area's aspect ratio.
+/// Width of one layout thumbnail in the picker; its height follows the work area's aspect ratio.
 pub const THUMB_W: u32 = 112;
+/// Space between the picker's border and its thumbnails.
 pub const PAD: u32 = 12;
+/// Space between two thumbnails.
 pub const SPACING: u32 = 10;
 /// The picker closes when the pointer goes this far below it (or below the trigger line).
 pub const LEAVE: i32 = 60;
 
+/// Where the picker and its thumbnails are.
 pub struct Picker {
     /// The picker window, in screen coordinates.
     pub rect: Rect,
@@ -118,6 +173,16 @@ pub struct Picker {
 }
 
 /// Places the picker at the top centre of `area` and lays out one thumbnail per layout.
+///
+/// ```
+/// use tileling::layout::{self, Rect};
+///
+/// let area = Rect { x: 0, y: 26, w: 1920, h: 1054 };
+/// let p = layout::picker(area, 6);
+/// assert_eq!(p.thumbs.len(), 6);
+/// assert_eq!(p.rect.x * 2 + p.rect.w as i32, 1920, "centred");
+/// assert_eq!(p.rect.y, area.y + 8);
+/// ```
 #[must_use]
 pub fn picker(area: Rect, count: usize) -> Picker {
     let th = (f64::from(THUMB_W) * f64::from(area.h) / f64::from(area.w.max(1))).round().clamp(40.0, 90.0) as u32;
@@ -138,6 +203,17 @@ pub fn picker_close_y(p: &Picker, area: Rect, trigger: u32) -> i32 {
 
 /// The (layout, zone) under the point (x, y), relative to the picker window. Zones cover their
 /// whole thumbnail, so there is no dead space between them.
+///
+/// ```
+/// use tileling::layout::{self, Rect};
+///
+/// let layouts = [layout::layout("halves").unwrap(), layout::layout("quarters").unwrap()];
+/// let p = layout::picker(Rect { x: 0, y: 0, w: 1920, h: 1080 }, layouts.len());
+/// let quarters = p.thumbs[1];
+/// // The bottom-right corner of the second thumbnail is the fourth quarter.
+/// assert_eq!(layout::hit(&p, &layouts, quarters.right() - 2, quarters.bottom() - 2), Some((1, 3)));
+/// assert_eq!(layout::hit(&p, &layouts, 1, 1), None, "the padding is no zone");
+/// ```
 #[must_use]
 pub fn hit(p: &Picker, layouts: &[&Layout], x: i32, y: i32) -> Option<(usize, usize)> {
     let (li, thumb) = p.thumbs.iter().enumerate().find(|(_, t)| t.contains(x, y))?;
@@ -170,11 +246,22 @@ pub fn grid(area: Rect, count: usize, cell: u32) -> Vec<Rect> {
         .collect()
 }
 
-/// A dock or panel's _`NET_WM_STRUT_PARTIAL`: left, right, top, bottom, then the start and end of
+/// A dock or panel's `_NET_WM_STRUT_PARTIAL`: left, right, top, bottom, then the start and end of
 /// each (`left_start_y`, `left_end_y`, `right_start_y`, `right_end_y`, `top_start_x`, `top_end_x`,
-/// `bottom_start_x`, `bottom_end_x`). Plain _`NET_WM_STRUT` has only the first four values.
+/// `bottom_start_x`, `bottom_end_x`). Plain `_NET_WM_STRUT` has only the first four values.
 pub type Strut = [u32; 12];
 
+/// The strut of a window from its `_NET_WM_STRUT_PARTIAL` (12 values) or `_NET_WM_STRUT` (4 values,
+/// spanning the whole `screen`); None for anything else.
+///
+/// ```
+/// use tileling::layout::{self, Rect};
+///
+/// let screen = Rect { x: 0, y: 0, w: 1920, h: 1080 };
+/// let top_panel = layout::strut(&[0, 0, 30, 0], screen).unwrap();
+/// assert_eq!(&top_panel[8..10], &[0, 1919], "over the whole width");
+/// assert_eq!(layout::strut(&[1, 2, 3], screen), None);
+/// ```
 #[must_use]
 pub fn strut(values: &[u32], screen: Rect) -> Option<Strut> {
     match values.len() {
@@ -187,8 +274,19 @@ pub fn strut(values: &[u32], screen: Rect) -> Option<Strut> {
     }
 }
 
-/// The part of `monitor` left by the struts of docks and panels. Unlike _`NET_WORKAREA`, which is
+/// The part of `monitor` left by the struts of docks and panels. Unlike `_NET_WORKAREA`, which is
 /// one rectangle for the whole screen, a panel on one monitor does not shrink the others.
+///
+/// ```
+/// use tileling::layout::{self, Rect};
+///
+/// let screen = Rect { x: 0, y: 0, w: 3840, h: 1080 };
+/// let (left, right) = (Rect { w: 1920, ..screen }, Rect { x: 1920, w: 1920, ..screen });
+/// // A 30-pixel panel at the top of the left monitor only.
+/// let panel = [0, 0, 30, 0, 0, 0, 0, 0, 0, 1919, 0, 0];
+/// assert_eq!(layout::work_area(left, screen, &[panel]).y, 30);
+/// assert_eq!(layout::work_area(right, screen, &[panel]), right);
+/// ```
 #[must_use]
 pub fn work_area(monitor: Rect, screen: Rect, struts: &[Strut]) -> Rect {
     let (mut left, mut top, mut right, mut bottom) = (monitor.x, monitor.y, monitor.right(), monitor.bottom());
@@ -214,10 +312,18 @@ pub fn work_area(monitor: Rect, screen: Rect, struts: &[Strut]) -> Rect {
     Rect { x: left, y: top, w: (right - left) as u32, h: (bottom - top) as u32 }
 }
 
-/// _`NET_MOVERESIZE_WINDOW` data that makes a frame with these extents (left, right, top, bottom)
+/// `_NET_MOVERESIZE_WINDOW` data that makes a frame with these extents (left, right, top, bottom)
 /// fill `r`: `NorthWest` gravity (1), x/y/width/height given (0xf00), from a pager-like tool (2 << 12).
 /// With `NorthWest` gravity, x and y are those of the frame's outer corner; width and height are
 /// the client's.
+///
+/// ```
+/// use tileling::layout::{self, Rect};
+///
+/// // Fill a zone with a window whose frame has a 29-pixel title bar and 5-pixel borders.
+/// let zone = Rect { x: 8, y: 34, w: 948, h: 978 };
+/// assert_eq!(layout::moveresize_data(zone, [5, 5, 29, 5]), [0x2f01, 8, 34, 938, 944]);
+/// ```
 #[must_use]
 pub fn moveresize_data(r: Rect, extents: [u32; 4]) -> [u32; 5] {
     let [l, rt, t, b] = extents;

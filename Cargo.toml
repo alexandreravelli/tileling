@@ -16,6 +16,9 @@ tiny-skia = { version = "0.12", default-features = false, features = ["std", "si
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 x11rb = { version = "0.14", features = ["image", "randr", "shape", "xinput"] }
 
+[lints.rust]
+missing_docs = "warn"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 # Tileling converts between X11's i16/u16, pixel i32/u32 and tiny-skia's f32 all the time.

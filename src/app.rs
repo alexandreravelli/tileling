@@ -1,7 +1,7 @@
 //! The X11 side. Tileling sleeps until the left mouse button goes down. While a window is dragged
 //! it follows the pointer through `XInput` 2 raw events (delivered even while the window manager
 //! holds the pointer grab), shows the layout picker near the top of the screen and a preview of
-//! the hovered zone, then tiles the window with _`NET_MOVERESIZE_WINDOW` and offers the other
+//! the hovered zone, then tiles the window with `_NET_MOVERESIZE_WINDOW` and offers the other
 //! windows for the zones that are left.
 
 use anyhow::{Context, anyhow, bail};
@@ -424,7 +424,7 @@ impl App {
     }
 
     /// The work area of the monitor under (x, y): the monitor minus the docks and panels that
-    /// reserve space on it. Falls back to _`NET_WORKAREA` when no window declares struts.
+    /// reserve space on it. Falls back to `_NET_WORKAREA` when no window declares struts.
     fn work_area(&self, x: i32, y: i32) -> Rect {
         let screen = self.geometry(self.root).unwrap_or(Rect { x: 0, y: 0, w: 1024, h: 768 });
         let monitors: Vec<Rect> = self
@@ -1067,7 +1067,7 @@ fn stroke_rrect(pm: &mut Pixmap, r: Rect, radius: f32, width: f32, color: Color)
     }
 }
 
-/// The best fitting image of _`NET_WM_ICON` (several ARGB images), scaled to `size`.
+/// The best fitting image of `_NET_WM_ICON` (several ARGB images), scaled to `size`.
 pub fn from_net_wm_icon(data: &[u32], size: u32) -> Option<Pixmap> {
     let mut best: Option<(u32, u32, &[u32])> = None;
     let mut rest = data;
